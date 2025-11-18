@@ -1,55 +1,66 @@
-1. Informasi Tantangan
-Kategori: Forensics
+# 🚩 Write-up Investigative Reversing 4 - picoCTF 2019
+
+## 📋 Informasi Tantangan
+- **Kategori:** Forensics  
+- **Tingkat Kesulitan:** Medium
+- **File yang Diberikan:**
+  - `mystery` (file biner executable)
+  - `Item01_cp.bmp` hingga `Item05_cp.bmp` (5 file gambar)
+
 ![Deskripsi Soal](images/soal.png)
+![Petunjuk Soal](images/clue.png)
 
+---
 
-![Deskripsi Soal](images/clue.png)
-Deskripsi: Diberikan sebuah file biner (mystery) dan lima file gambar (image01 hingga image05). Tugasnya adalah menganalisis file-file ini untuk menemukan flag yang tersembunyi. (Sumber: soal.png)
+## 🔍 Enumerasi Awal
 
-2. Enumerasi Awal
-Langkah pertama adalah melihat semua file yang diberikan. Dari ls di terminal, kita memiliki:
+Dari enumerasi file, kita memiliki:
+- **5 file gambar BMP:** `Item01_cp.bmp` hingga `Item05_cp.bmp`
+- **1 file biner:** `mystery`
 
-Lima file gambar: Item01_cp.bmp, Item02_cp.bmp, Item03_cp.bmp, Item04_cp.bmp, Item05_cp.bmp
+Karena ada file biner executable, fokus investigasi adalah melakukan reverse engineering pada file `mystery` untuk memahami bagaimana program berinteraksi dengan kelima gambar tersebut.
 
-Satu file biner: mystery
+---
 
-Karena ada file biner yang dieksekusi, fokus utama investigasi adalah melakukan reverse engineering pada file mystery untuk memahami bagaimana ia berinteraksi dengan kelima gambar tersebut. (Sumber: clue.png)
+## ⚙️ Analisis Reverse Engineering
 
-3. Analisis Biner & Reverse Engineering
-Dengan menggunakan Ghidra, logika internal program mystery berhasil dibedah dalam tiga tahap:
-![Deskripsi Soal](images/funcMain.png)
-a. Fungsi main() Analisis pada fungsi main menunjukkan bahwa program ini adalah sebuah enkoder. Ia dirancang untuk membaca sebuah flag dari file flag.txt (yang ada di server), lalu memanggil fungsi encodeAll() untuk memulai proses penyembunyian data. 
+Menggunakan **Ghidra**, logika internal program `mystery` berhasil dianalisis dalam tiga tahap:
 
-![Deskripsi Soal](images/edcodeAll.png)
-b. Fungsi encodeAll() Fungsi ini berisi logika kunci pertama: sebuah loop yang berjalan mundur dari 5 ke 1. Ini berarti program memproses file gambar dalam urutan terbalik: Item05, Item04, Item03, Item02, lalu Item01. Di setiap iterasi, ia memanggil encodeDataInFile() untuk melakukan enkripsi pada satu gambar. 
+### 1. Fungsi `main()`
+![Fungsi Main](images/funcMain.png)
+Analisis menunjukkan bahwa program ini adalah sebuah **enkoder** yang:
+- Membaca flag dari file `flag.txt` (yang ada di server)
+- Memanggil fungsi `encodeAll()` untuk memulai proses penyembunyian data
 
-![Deskripsi Soal](images/encodeDataInFile.png)
-c. Fungsi encodeDataInFile() Ini adalah inti dari mekanisme steganografi. Analisis pada fungsi ini mengungkap dua detail penting:
+### 2. Fungsi `encodeAll()`
+![Fungsi encodeAll](images/edcodeAll.png)
+Fungsi ini mengandung logika kunci:
+- Loop yang berjalan **mundur** dari 5 ke 1
+- Program memproses file gambar dalam urutan terbalik: **Item05 → Item04 → Item03 → Item02 → Item01**
+- Setiap iterasi memanggil `encodeDataInFile()` untuk melakukan enkripsi pada satu gambar
 
-Header Offset: Program akan melewati 2019 byte (0x7e3) pertama dari setiap gambar sebelum menyisipkan data.
+### 3. Fungsi `encodeDataInFile()`
+![Fungsi encodeDataInFile](images/encodeDataInFile.png)
+Ini adalah inti mekanisme steganografi:
+- **Header Offset:** Melewati **2019 byte** (0x7e3) pertama dari setiap gambar
+- **Pola Enkripsi:** Menyembunyikan **10 karakter flag** per gambar dengan pola:
+  - Sembunyikan 1 karakter dalam 8 byte menggunakan LSB
+  - Lalu salin 4 byte biasa (di-skip)
 
-Pola Enkripsi: Program menyembunyikan 10 karakter flag per gambar dengan pola LSB (Least Significant Bit) yang unik: sembunyikan 1 karakter dalam 8 byte, lalu salin 4 byte biasa. (Sumber: encodeDataInFile.jpg)
+---
 
-4. Skrip Solusi
-Dengan semua informasi di atas, kita dapat membuat skrip Python untuk membalik proses tersebut. Skrip harus:
+## 💻 Skrip Solusi
 
-Membaca file gambar dalam urutan terbalik (dari 5 ke 1).
+Berdasarkan analisis reverse engineering, dibuat skrip Python untuk membalik proses enkripsi:
 
-Melewati 2019 byte pertama dari setiap file.
-
-Mengekstrak 10 karakter dari setiap file dengan pola "baca 8 byte, lewati 4 byte".
-
-Menggabungkan hasilnya untuk membentuk flag lengkap.
-Python
-
+```python
 # solveFinal.py
-import base64
 
 def solve():
-    # Daftar file dalam urutan yang benar (mundur)
+    # Daftar file dalam urutan terbalik (sesuai analisis encodeAll)
     files = [
         "Item05_cp.bmp",
-        "Item04_cp.bmp",
+        "Item04_cp.bmp", 
         "Item03_cp.bmp",
         "Item02_cp.bmp",
         "Item01_cp.bmp"
@@ -73,13 +84,14 @@ def solve():
                     if not img_byte:
                         raise EOFError("File ended unexpectedly.")
                     
+                    # Ekstrak LSB (Least Significant Bit)
                     lsb = ord(img_byte) & 1
                     char_byte = (char_byte << 1) | lsb
                 
                 # Balik urutan bit dan konversi ke karakter
                 full_flag += chr(int(bin(char_byte)[2:].zfill(8)[::-1], 2))
 
-                # Lewati 4 byte sesuai dengan pola enkoder
+                # Lewati 4 byte sesuai pola enkoder
                 f.read(4)
 
     print("\n[+] Flag ditemukan!")
@@ -87,7 +99,31 @@ def solve():
 
 if __name__ == '__main__':
     solve()
-5. Eksekusi dan Flag
-Menjalankan skrip solveFinal.py berhasil memproses semua file dalam urutan yang benar dan mengekstrak flag yang tersembunyi.
+```
 
-Flag: picoCTF{N1c3_R3ver51ng_5k1115_0000000000b93ee6e2}
+---
+
+## 🏴‍☠️ Eksekusi dan Flag
+
+Setelah menjalankan skrip `solveFinal.py`, program berhasil memproses semua file dalam urutan yang benar dan mengekstrak flag yang tersembunyi:
+
+**Flag:** `picoCTF{N1c3_R3ver51ng_5k1115_0000000000b93ee6e2}`
+
+---
+
+## 📚 Teknik yang Dipelajari
+
+1. **Reverse Engineering** dengan Ghidra
+2. **Analisis File BMP** dan struktur header
+3. **Steganografi LSB** (Least Significant Bit)
+4. **Manipulasi File Biner** dengan Python
+5. **Pemahaman Pola Enkripsi** custom
+
+---
+
+## 🎯 Kesimpulan
+
+Tantangan ini mengajarkan pentingnya memahami alur program secara keseluruhan melalui reverse engineering. Kunci solusinya adalah:
+- Mengidentifikasi urutan pemrosesan file yang **terbalik**
+- Memahami pola **LSB encoding** yang digunakan
+- Mengimplementasikan **decoder** yang membalik proses enkripsi
