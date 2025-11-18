@@ -2,7 +2,7 @@
 
 ## 📋 Informasi Tantangan
 - **Kategori:** Forensics  
-- **Tingkat Kesulitan:** Medium
+- **Tingkat Kesulitan:** Hard
 - **File yang Diberikan:**
   - `mystery` (file biner executable)
   - `Item01_cp.bmp` hingga `Item05_cp.bmp` (5 file gambar)
